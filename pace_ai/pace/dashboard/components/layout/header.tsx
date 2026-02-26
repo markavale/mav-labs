@@ -8,6 +8,7 @@ import { AgentStatusIndicator } from '@/components/shared/status-indicator';
 import { PaceAvatarStatic } from '@/components/shared/pace-avatar';
 import { mockAgentStatus } from '@/lib/mock-data';
 import { formatRelativeTime } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -20,7 +21,8 @@ export function Header({ onMenuClick, onNotesClick }: HeaderProps) {
   const status = mockAgentStatus;
 
   async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    const supabase = createClient();
+    await supabase.auth.signOut();
     router.push('/login');
     router.refresh();
   }
