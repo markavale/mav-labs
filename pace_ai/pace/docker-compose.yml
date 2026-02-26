@@ -1,0 +1,201 @@
+# PACE AI - Full Stack Docker Compose
+# Usage: docker compose up -d
+# Dashboard: http://localhost:3000
+# OpenClaw Gateway: http://localhost:18789
+
+services:
+  # ==========================================================================
+  # Redis - Real-time pub/sub and caching (required by OpenClaw)
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: pace-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - pace-network
+
+  # ==========================================================================
+  # OpenClaw - Agent Runtime & Gateway
+  # Usage: docker compose --profile full up -d openclaw
+  # Gateway UI: http://localhost:18789
+  # ==========================================================================
+  openclaw:
+    build:
+      context: ./infra/docker
+      dockerfile: Dockerfile.openclaw
+    container_name: pace-openclaw
+    ports:
+      - "18789:18789"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - MAV_TELEGRAM_ID=${MAV_TELEGRAM_ID:-}
+      - REDIS_URL=redis://redis:6379
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+      - APIFY_TOKEN=${APIFY_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - TZ=Asia/Manila
+    volumes:
+      - ./infra/config/openclaw.json:/config/openclaw.json:ro
+      - openclaw_home:/home/node/.openclaw
+      - ./memory/SOUL.md:/home/node/.openclaw/workspaces/pace/SOUL.md:ro
+      - ./memory/AGENTS.md:/home/node/.openclaw/workspaces/pace/AGENTS.md:ro
+      - ./memory/MEMORY.md:/home/node/.openclaw/workspaces/pace/USER.md:ro
+      - ./memory/HEARTBEAT.md:/home/node/.openclaw/workspaces/pace/HEARTBEAT.md:ro
+      - ./memory/para:/home/node/.openclaw/workspaces/pace/memory
+      - ./skills:/home/node/.openclaw/workspaces/pace/skills
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pace-network
+    profiles:
+      - full
+
+  # ==========================================================================
+  # Dashboard - Next.js 14 App
+  # ==========================================================================
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: pace-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_OWNER=${GITHUB_OWNER:-markavale}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - MAV_TELEGRAM_ID=${MAV_TELEGRAM_ID:-}
+      - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH:-}
+      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET:-}
+      - AUTH_SESSION_DURATION=${AUTH_SESSION_DURATION:-7d}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pace-network
+
+  # ==========================================================================
+  # Dashboard (Development Mode)
+  # Usage: docker compose --profile dev up -d dashboard-dev
+  # ==========================================================================
+  dashboard-dev:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile.dev
+    container_name: pace-dashboard-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_OWNER=${GITHUB_OWNER:-markavale}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - MAV_TELEGRAM_ID=${MAV_TELEGRAM_ID:-}
+      - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH:-}
+      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET:-}
+      - AUTH_SESSION_DURATION=${AUTH_SESSION_DURATION:-7d}
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - pace-network
+    profiles:
+      - dev
+
+  # ==========================================================================
+  # Research Engine - REST API for multi-source research pipeline
+  # ==========================================================================
+  research:
+    build:
+      context: ./research
+      dockerfile: Dockerfile
+    container_name: pace-research
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+      - APIFY_TOKEN=${APIFY_TOKEN:-}
+      - PORT=4000
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pace-network
+    profiles:
+      - full
+
+  # ==========================================================================
+  # Sandbox Runner - For isolated code execution
+  # ==========================================================================
+  sandbox:
+    build:
+      context: ./infra/docker
+      dockerfile: Dockerfile.sandbox
+    container_name: pace-sandbox
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=256M
+      - /workspace:size=512M
+    environment:
+      - SANDBOX_MODE=true
+      - TZ=Asia/Manila
+    working_dir: /workspace
+    user: sandbox
+    networks:
+      - pace-sandbox-net
+    profiles:
+      - sandbox
+
+networks:
+  pace-network:
+    driver: bridge
+  pace-sandbox-net:
+    driver: bridge
+    internal: true
+
+volumes:
+  redis_data:
+  openclaw_home:
