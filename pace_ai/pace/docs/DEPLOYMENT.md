@@ -343,18 +343,12 @@ GOOGLE_REFRESH_TOKEN=your-refresh-token
 GMAIL_ADDRESS=pace.mav@your-domain.com
 
 # =============================================================================
-# Dashboard Authentication
+# Dashboard Authentication (Supabase)
+# Get from: https://supabase.com/dashboard/project/YOUR_PROJECT/settings/api
+# Create a user: Supabase Dashboard > Authentication > Users > Add User
 # =============================================================================
-# Generate password hash:
-#   node -e "require('bcryptjs').hash('yourpassword',12).then(h=>console.log(h))"
-AUTH_PASSWORD_HASH=$2b$12$your-bcrypt-hash-here
-
-# Generate JWT secret (256-bit random):
-#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-AUTH_JWT_SECRET=your-256-bit-hex-secret-here
-
-# Session duration (default: 7 days)
-AUTH_SESSION_DURATION=7d
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 # =============================================================================
 # System

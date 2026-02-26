@@ -2,70 +2,51 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, EyeOff, Lock, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, Loader2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '/';
 
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [retryAfter, setRetryAfter] = useState(0);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (loading || retryAfter > 0) return;
+    if (loading) return;
 
     setError('');
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+      const supabase = createClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        router.push(redirectTo);
-        router.refresh();
+      if (authError) {
+        if (authError.message.includes('rate') || authError.status === 429) {
+          setError('Too many attempts. Please try again later.');
+        } else {
+          setError('Invalid email or password');
+        }
+        setPassword('');
         return;
       }
 
-      if (res.status === 429) {
-        const seconds = data.retryAfter || 60;
-        setRetryAfter(seconds);
-        setError(`Too many attempts. Try again in ${seconds}s`);
-        startCountdown(seconds);
-        return;
-      }
-
-      setError(data.error || 'Invalid password');
-      setPassword('');
+      router.push(redirectTo);
+      router.refresh();
     } catch {
       setError('Connection error. Please try again.');
     } finally {
       setLoading(false);
     }
-  }
-
-  function startCountdown(seconds: number) {
-    let remaining = seconds;
-    const interval = setInterval(() => {
-      remaining -= 1;
-      setRetryAfter(remaining);
-      if (remaining <= 0) {
-        clearInterval(interval);
-        setError('');
-      } else {
-        setError(`Too many attempts. Try again in ${remaining}s`);
-      }
-    }, 1000);
   }
 
   return (
@@ -103,6 +84,31 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label
+                htmlFor="email"
+                className="block text-sm font-medium text-text-secondary mb-1.5"
+              >
+                Email
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Mail className="w-4 h-4 text-text-muted" />
+                </div>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoFocus
+                  required
+                  disabled={loading}
+                  className="w-full pl-9 pr-4 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-cyan/50 focus:border-brand-cyan/50 transition-colors disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label
                 htmlFor="password"
                 className="block text-sm font-medium text-text-secondary mb-1.5"
               >
@@ -118,7 +124,6 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  autoFocus
                   required
                   disabled={loading}
                   className="w-full pl-9 pr-10 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-cyan/50 focus:border-brand-cyan/50 transition-colors disabled:opacity-50"
@@ -146,7 +151,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || !password || retryAfter > 0}
+              disabled={loading || !email || !password}
               className="w-full py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-brand-cyan text-dark-bg hover:bg-brand-cyan/90 focus:outline-none focus:ring-2 focus:ring-brand-cyan/50 focus:ring-offset-2 focus:ring-offset-dark-bg"
             >
               {loading ? (

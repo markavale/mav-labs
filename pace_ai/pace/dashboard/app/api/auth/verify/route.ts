@@ -1,18 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, COOKIE_NAME } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
-export async function GET(request: NextRequest) {
-  const token = request.cookies.get(COOKIE_NAME)?.value;
+export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!token) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated' },
-      { status: 401 }
-    );
-  }
-
-  const payload = await verifyToken(token);
-  if (!payload) {
+  if (!user) {
     return NextResponse.json(
       { success: false, error: 'Not authenticated' },
       { status: 401 }
@@ -21,6 +14,6 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    data: { authenticated: true, user: payload.sub },
+    data: { authenticated: true, user: user.email },
   });
 }

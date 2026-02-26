@@ -1,52 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyPassword, signToken, buildAuthCookie, checkRateLimit } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-      || request.headers.get('x-real-ip')
-      || '127.0.0.1';
-
-    const rateLimitResult = await checkRateLimit(ip);
-    if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Too many attempts',
-          retryAfter: rateLimitResult.retryAfter,
-        },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(rateLimitResult.retryAfter) },
-        }
-      );
-    }
-
     const body = await request.json().catch(() => null);
-    if (!body?.password || typeof body.password !== 'string') {
+    if (!body?.email || !body?.password) {
       return NextResponse.json(
-        { success: false, error: 'Password is required' },
+        { success: false, error: 'Email and password are required' },
         { status: 400 }
       );
     }
 
-    const valid = await verifyPassword(body.password);
-    if (!valid) {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: body.email,
+      password: body.password,
+    });
+
+    if (error) {
+      const status = error.status === 429 ? 429 : 401;
       return NextResponse.json(
-        { success: false, error: 'Invalid password' },
-        {
-          status: 401,
-          headers: {
-            'X-RateLimit-Remaining': String(rateLimitResult.remaining),
-          },
-        }
+        { success: false, error: error.message },
+        { status }
       );
     }
 
-    const token = await signToken();
-    const response = NextResponse.json({ success: true });
-    response.headers.set('Set-Cookie', buildAuthCookie(token));
-    return response;
+    return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[auth/login]', err);
     return NextResponse.json(
